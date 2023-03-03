@@ -1,0 +1,380 @@
+""" This file is used within Google Colab, therefore not all commands will work inside a different IDE. """
+
+# importing relevant modules
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import numpy.polynomial.polynomial as poly
+
+
+# connecting the drive
+from google.colab import drive
+drive.mount('/content/drive', force_remount=True)
+
+
+# so that dataframes can be viewed like tables (when within limits)
+%load_ext google.colab.data_table
+
+# easier to type
+nat = np.datetime64('nat')
+
+
+# importing the file (using a different encoding setting as the regular one didn't work)
+df = pd.read_csv("/content/drive/MyDrive/Colab Notebooks/Winc Academy Assignments/Data/attacks.csv", encoding='ISO-8859-1')
+
+# dropping some irrelevant columns, by keeping a slice of the original dataframe
+df = df.iloc[:,:15]
+
+# first remove whitespaces from column name(s)
+df.columns = df.columns.str.strip()
+
+# dropping the rows where every column in a row contains NaN, this will not create a known bias as all values are NaN here.
+df.dropna(how='all', inplace=True)
+
+# display when programming, is usefull to view the original df (prior to cleaning)
+#display(df)
+
+
+""" First we're going to clean the dataframe, checking each column 1 by 1.
+This will ensure that all irrelevant data is removed or replaced (causing a bias),
+but being able to make some conclusions in order to answer the questions. """
+
+
+# After ensuring that the "Case Number" is not a unique id, so dupclates not 
+# meaning actual duplicate entries, the column is removed as it doesn't serve
+# purpose in answering the questions
+df_cleaned = df.drop('Case Number', axis=1)
+
+# The "Date", "Year". "Time" columns are also not relevant for answering the questions
+df_cleaned = df_cleaned.drop('Date', axis=1)
+df_cleaned = df_cleaned.drop('Year', axis=1)
+df_cleaned = df_cleaned.drop('Time', axis=1)
+
+
+# The 'Type' column contains information regarding the shark attack being
+# provoked or unprovoked and some other types. To answer the question(s)
+# all we need to know is if the sharks were provoked or not. So we're going to
+# replace all that or not provoked or unprovoked to None.
+replace_value(df_cleaned, 'Type', 'Boating', None)
+replace_value(df_cleaned, 'Type', 'Invalid', None)
+replace_value(df_cleaned, 'Type', 'Questionable', None)
+replace_value(df_cleaned, 'Type', 'Sea Disaster', None)
+replace_value(df_cleaned, 'Type', np.nan, None)
+replace_value(df_cleaned, 'Type', 'Boat', None)
+replace_value(df_cleaned, 'Type', 'Boatomg', None)
+
+
+# The columns "Country", "Area" & "Location" are not relevant to answer the questions
+# so these are dropped
+df_cleaned = df_cleaned.drop('Country', axis=1)
+df_cleaned = df_cleaned.drop('Area', axis=1)
+df_cleaned = df_cleaned.drop('Location', axis=1)
+
+
+# The column "Activity" is relevant. It already has some generic activities
+# but also some irregular ones written within complete sentences. We're 
+# going to create a dictionary in order to map these sentences against to
+# group these into the generic activities as best as we can. Here we're creating 
+# a bias, as all we can't map with the dictrionary will not be included as an activity
+# and those that do match will belong into one of my created groups (and the already existing ones)
+
+# ensure all entries within the "Activity" column are lower case
+df_cleaned['Activity'] = df_cleaned['Activity'].str.lower()
+
+# replace NaN to "Unknown" in order to be able to iterate the column values
+replace_value(df_cleaned, 'Activity', np.nan, "Unknown")
+
+# create a dictionary of activities
+activities = {'swimming': 'swimming', 'paddling': 'paddling', 'standing': 'standing', 'spear' :'spear fishing', 'fishing' :'fishing', 
+  'free': 'free diving','kite': 'kite surfing', 'walking': 'walking', 'feeding': 'feeding sharks', 'scuba': 'scuba diving', 'paddle': 'paddle skiing', 
+  'accident': 'boat accident', 'capsizing': 'boat accident', 'transport': 'transport', 'sinking': 'sinking'}
+
+# call function to map the values of the colum against the dictionary
+df_cleaned = map_against_dictionary(df_cleaned, 'Activity', activities)
+
+
+# The "Name" and "Sex" columns are not relevant, so they are dropped
+df_cleaned = df_cleaned.drop('Name', axis=1)
+df_cleaned = df_cleaned.drop('Sex', axis=1)
+
+
+# now looking into the "Age" column, start with stripping whitespaces and then replacing some values
+
+# stripping the entries from whitespaces
+df_cleaned['Age'] = df['Age'].str.strip()
+
+# replacing some values
+replace_value(df_cleaned, 'Age', '', np.nan)
+replace_value(df_cleaned, 'Age', '\xa0 ', np.nan)
+replace_value(df_cleaned, 'Age', 'X', np.nan)
+replace_value(df_cleaned, 'Age', 'MAKE LINE GREEN', np.nan)
+
+# loop through entries in column and cast to integer, replace with np.nan when not able to
+# creating a bias here as all non integer numbers will be replaced here.
+
+for index, value in df_cleaned['Age'].iteritems():
+  try:
+      df_cleaned.at[index, 'Age'] = int(value)    
+  except:
+      df_cleaned.at[index, 'Age'] = np.nan
+
+
+# the "Injury" column is also not relevant to answer the questions, so drop it
+df_cleaned = df_cleaned.drop('Injury', axis=1)
+
+
+# remove all white spaces within the column
+df_cleaned['Fatal (Y/N)'] = df_cleaned['Fatal (Y/N)'].str.strip()
+
+# replacing some values here, again cause a bias
+replace_value(df_cleaned, 'Fatal (Y/N)', 'UNKNOWN', None)
+replace_value(df_cleaned, 'Fatal (Y/N)', '2017', None)
+replace_value(df_cleaned, 'Fatal (Y/N)', 'M', None)
+replace_value(df_cleaned, 'Fatal (Y/N)', 'y', 'Y')
+replace_value(df_cleaned, 'Fatal (Y/N)', np.nan, None)
+
+
+# finally looking at the "Species" column, following a similar approach as with
+# "Activities" column
+
+# replacing some values
+replace_value(df_cleaned, 'Species', np.nan, 'Unknown') 
+replace_value(df_cleaned, 'Species', 'Shark involvement prior to death was not confirmed', 'Unknown') 
+replace_value(df_cleaned, 'Species', 'Invalid', 'Unknown')
+replace_value(df_cleaned, 'Species', 'Shark involvement not confirmed', 'Unknown')
+replace_value(df_cleaned, 'Species', 'Shark involvement prior to death unconfirmed', 'Unknown')
+replace_value(df_cleaned, 'Species', ' ', 'Unknown')
+
+# set all entries within the Species column to lower case
+df_cleaned['Species'] = df_cleaned['Species'].str.lower()
+
+# create a dictionary of shark types 
+sharks = {'bask': 'basking shark', 'blacktip': 'blacktip shark', 'blue': 'blue shark', 'bull' :'bull shark', 'galapagos' :'galapagos shark', 
+  'hammer': 'hammerhead shark','lemon': 'lemon shark', 'mako': 'mako shark', 'nurse': 'nurse shark', 'reef': 'reef shark', 'sand': 'sand tiger shark', 
+  'thresher': 'thresher shark', 'tiger': 'tiger shark', 'whale': 'whale shark', 'white': 'white shark', 'whitetip': 'whitetip shark', 
+  'wobbegong': 'wobbegong shark', 'zambesi': 'bull shark', 'zambezi': 'bull shark'}
+
+# call function to map the values of the colum against the dictionary
+df_cleaned = map_against_dictionary(df_cleaned, 'Species', sharks)
+
+
+display(df_cleaned)
+
+
+
+# Applying some final formatting to help answer the questions
+
+# Q1: What are the most dangerous types of sharks to humans? 
+
+# drop all rows where either of these two columns is None, assuming that all remaining
+# were actual shark attacks, either fatal or not
+df_q1 = df_cleaned.dropna(subset=['Fatal (Y/N)', 'Species'], how="any")
+
+# filter only the attacks that were fatal
+df_q1 = df_q1.loc[(df_q1['Fatal (Y/N)'] == 'Y')]
+
+# group the number of fatal attacks per shark type
+df_q1 = df_q1.groupby(['Species']).agg({'Fatal (Y/N)': "count"})
+df_q1.sort_values(by='Fatal (Y/N)', inplace=True, ascending=False)
+
+
+""" Answer: The white shark is the most dangerous type of shark to humans when looked at
+the number of fatal attacks on humans in absolute terms. Biases were made in the cleaning of the dataframe.
+For this question specifically the mapping against the dictionary.
+"""
+
+
+# Q2: Are children more likely to be attacked by sharks? 
+
+# drop all rows where either of these two columns is None, assuming that all remaining
+# were actual shark attacks, either fatal or not (bias introduced here)
+df_q2 = df_cleaned.dropna(subset=['Age', 'Fatal (Y/N)'], how='any')
+
+# now we're going to add a new column containing "child" when < 18 or
+# "adult" >= 18.
+df_q2["child/adult"] = np.where(df_q2["Age"] < 18, 'child', 'adult')
+
+# count the number of occurences of both these groups
+counts = df_q2["child/adult"].value_counts()
+
+
+""" Answer: No, adults are more likely to be attacked by sharks. """
+
+
+# Q3: Are shark attacks where sharks were provoked more or less dangerous? 
+
+# drop all rows where either of these two columns is None, assuming that all remaining
+# were actual shark attacks, either fatal or not and known if they were provoked or not
+df_q3 = df_cleaned.dropna(subset=['Fatal (Y/N)', 'Type'], how="any")
+
+# group the number of fatal attacks per provoked or unprovoked
+df_q3 = df_q3.groupby(['Type', 'Fatal (Y/N)']).agg({'Fatal (Y/N)': "count"})
+
+
+""" Shark attacks where they were provoked resulted in 567 attacks: 
+(548 not fatal & 19 fatal). While attacks where they were unprovoked resulted in
+4532 attacks (of which 3351 not fatal and 1181 fatal). In both absolute & relative
+terms the unprovoked shark attacks are more dangerous.
+"""
+
+# Q4: Are certain activities more likely to result in a shark attack? 
+
+# drop all rows where either of these two columns is None, assuming that all remaining
+# were actual shark attacks, either fatal or not. The rows where any of these are None
+# are left out here (bias)
+df_q4 = df_cleaned.dropna(subset=['Activity', 'Fatal (Y/N)'], how="any")
+
+# groupby activity
+df_q4 = df_q4.groupby(['Activity']).agg({'Fatal (Y/N)': 'count'})
+
+# sort values, descending
+df_q4.sort_values(by='Fatal (Y/N)', inplace=True, ascending=False)
+
+
+
+""" In absolute terms 'swimming' is the most dangerous activity, as this results
+in the highest number of shark attacks (both fatal and not fatal)
+"""
+
+
+# function to create some easy to read formatting
+def print_separator(sep, num, msg):
+  print("\n")
+  print(sep * num)
+  print(f"{msg}")
+  print(sep * num)
+  
+  
+  
+# function to check unique values in colum and help sort if possible
+def look_at_unique_values(column): 
+  unique_values_cutoff = 160
+  unique_values = column.unique()
+  num_unique_values = len(unique_values)
+  if num_unique_values == len(column):
+    print(f"Each value in the column is unique (total: {num_unique_values})")
+  elif num_unique_values < unique_values_cutoff:
+    print(f"Less than {unique_values_cutoff} unique values:")
+    # We may get an error when sorting
+    try:
+      sorted = np.sort(unique_values)
+      print("Values are sorted")
+      display(list(sorted))
+    except:
+      print("Could not sort values")
+      display(list(unique_values))
+  else:
+    print(f"More than {unique_values_cutoff} unique values (total: {num_unique_values})")
+    
+    
+    
+# function that helps to show the edges of the column
+def look_at_edges(df, column_name):
+  
+  # inner function
+  def show_head_and_tail(values):
+      num_items_to_slice = 10
+      display(list(values)[:num_items_to_slice])
+      display(list(values)[-num_items_to_slice:])
+
+  column = df[column_name]
+  unique_values = column.unique()
+  
+  try:
+      sorted = np.sort(unique_values)
+      print("Unique values sorted, head and tail:")
+      show_head_and_tail(sorted)
+  except TypeError as error:
+      print(f"Could not sort values: {error}")
+      print("..so let's try filtering NULL values and then sorting")
+      non_null_uniques = df.loc[~df[column_name].isnull(), column_name].unique()
+      sorted = np.sort(non_null_uniques)
+      show_head_and_tail(sorted)
+      
+      
+ 
+# function that tries to cast all values of the column into a stated type
+def cast_to_type(column, maybe_type):
+  try:
+    column.astype(maybe_type)
+    print(f"Casting to {maybe_type} was successful")
+  except ValueError as error:
+    print(f"Could not cast to {maybe_type}: {error}")
+    
+    
+
+# this function combines the above three functions and adds a final one (D) 
+# to help find the non-default/default null values within a columm
+
+def find_non_default_missing_values(df, column_name, maybe_type):
+  
+  long_separator_amount = 80
+  short_separator_amount = 40
+
+  print_separator("*", long_separator_amount, f"Finding non default missing values for column \"{column_name}\"")
+
+  print(f"Column \"{column_name}\" has datatype: {df.dtypes[column_name]}")
+
+  column = df[column_name]  
+
+  # A
+  print_separator("-", short_separator_amount, "A: Looking at unique values")
+  look_at_unique_values(column)
+
+  # B
+  print_separator("-", short_separator_amount, "B: Sorting and looking at the edges")
+  look_at_edges(df, column_name)
+
+  # C
+  print_separator("-", short_separator_amount, f"C: Casting to type: {maybe_type}")
+  cast_to_type(column, maybe_type)
+
+  # D
+  print_separator("-", short_separator_amount, "D: Looking at frequency")
+  display(column.value_counts(dropna=False))
+
+  print("\n")
+  
+  
+  
+# function to call in order to replace values in a dataframe
+def replace_value(df_workable, column_name, missing_old, missing_new):
+  # ⚠️ Mutates df
+  df_workable[column_name] = df_workable[column_name].replace({missing_old: missing_new})
+  
+
+def make_barchart(df, colX, colY):
+
+  fig, ax = plt.subplots()
+
+  x_values = df.loc[:, colX]
+  y_values = df.loc[:, colY]
+
+  ax.bar(x_values, y_values)
+ 
+  plt.title("The absolute nr. of fatal attacks by sharks per type of shark")
+  plt.xlabel("type of shark")
+  plt.ylabel("number of fatal attacks")
+  plt.xticks(rotation=45)
+  plt.grid(axis="x")
+
+  plt.show()
+  
+  
+def map_against_dictionary(df, column, dictionary):
+
+# this function is used to map the entries of a column to a dictionary
+# both arguments of this function.
+
+  for index, value in df[column].iteritems():
+    iterator = 0
+    for key in dictionary:
+      iterator += 1
+      if key in value:
+          df.at[index, column] = dictionary[key]
+          break 
+      elif iterator == len(dictionary):
+          df.at[index, column] = None
+
+  return df
+
